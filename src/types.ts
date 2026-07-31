@@ -1,10 +1,11 @@
-export type ProviderName = 'anthropic' | 'openai';
+export type ProviderName = 'anthropic' | 'openai' | 'nvidia';
 
 export interface AppConfig {
   provider: ProviderName;
   anthropicModel: string;
   openaiModel: string;
   openaiBaseUrl: string;
+  nvidiaModel: string;
   maxToolRounds: number;
 }
 

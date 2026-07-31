@@ -1,6 +1,6 @@
 # CCode AI
 
-An **original** agentic coding assistant CLI for local projects with a terminal TUI, slash commands, sessions, and safe coding-agent tools.
+An **original** agentic coding assistant CLI for local projects with an improved terminal TUI, slash commands, sessions, animated thinking states, and safe coding-agent tools.
 
 Repository: <https://github.com/anmolpromax8-creator/Claude-code>
 
@@ -20,14 +20,24 @@ ccode
 ccode-ai
 ```
 
+## What's new
+
+- Improved terminal UI with splash/header, status frame, and input bar
+- `Ctrl+O` expands/collapses the input bar
+- Animated generating indicator while the model responds
+- NVIDIA NIM provider support using the official base URL only:
+  - `https://integrate.api.nvidia.com/v1`
+- If the selected provider API key is missing, the CLI asks for it securely for the current session
+
 ## Features
 
-- Real interactive terminal UI for coding sessions
+- Interactive TUI chat and one-shot task mode
 - Slash command palette: type `/`
 - Slash commands:
   - `/help` show commands
   - `/status` show provider/model/session/root
-  - `/provider` switch Anthropic/OpenAI-compatible provider
+  - `/provider` switch Anthropic/OpenAI-compatible/NVIDIA NIM provider
+  - `/apikey` enter API key for current provider for this session
   - `/model` change model
   - `/tools` list available agent tools
   - `/sessions` list saved sessions
@@ -38,8 +48,7 @@ ccode-ai
   - `/cwd` change project root
   - `/compact` trim conversation context
   - `/exit` quit
-- One-shot task mode with `ccode run "task"`
-- Anthropic API and OpenAI-compatible API support
+- Anthropic API, OpenAI-compatible APIs, and NVIDIA NIM support
 - Tool-calling agent loop
 - Safe project-root file tools:
   - list files
@@ -55,11 +64,12 @@ ccode-ai
 
 ## API keys
 
-Set one or both:
+Set any provider key ahead of time, or let the CLI ask when needed:
 
 ```bash
 export ANTHROPIC_API_KEY="..."
 export OPENAI_API_KEY="..."
+export NVIDIA_API_KEY="..."
 ```
 
 For OpenAI-compatible providers:
@@ -67,6 +77,19 @@ For OpenAI-compatible providers:
 ```bash
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 export OPENAI_MODEL="gpt-4o-mini"
+```
+
+For NVIDIA NIM:
+
+```bash
+export NVIDIA_API_KEY="..."
+export NVIDIA_MODEL="nvidia/llama-3.1-nemotron-ultra-253b-v1"
+```
+
+NVIDIA NIM always uses:
+
+```text
+https://integrate.api.nvidia.com/v1
 ```
 
 For Anthropic:
@@ -101,6 +124,14 @@ Configure defaults:
 ccode config set provider anthropic
 ccode config set anthropicModel claude-3-5-sonnet-latest
 ccode config show
+```
+
+Use NVIDIA NIM:
+
+```bash
+ccode config set provider nvidia
+ccode config set nvidiaModel nvidia/llama-3.1-nemotron-ultra-253b-v1
+ccode
 ```
 
 Use OpenAI-compatible mode:

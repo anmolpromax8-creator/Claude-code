@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { createProvider } from './providers/index.js';
 import { runTool, toolDefinitions } from './tools/registry.js';
+import { createSpinner } from './tui.js';
 import { AppConfig, ChatMessage, ToolContext } from './types.js';
 
 export function systemPrompt(root: string): string {
@@ -28,7 +29,16 @@ export async function runAgentTask(messages: ChatMessage[], opts: AgentOptions):
   const ctx: ToolContext = { root: opts.root, yes: opts.yes };
 
   for (let round = 0; round < opts.config.maxToolRounds; round++) {
-    const response = await provider.complete(messages, toolDefinitions);
+    const thinking = createSpinner(`Generating with ${provider.name}`);
+    let response;
+    try {
+      response = await provider.complete(messages, toolDefinitions);
+      thinking.stop(chalk.green(`✓ ${provider.name} responded`));
+    } catch (err) {
+      thinking.stop(chalk.red(`✗ ${provider.name} failed`));
+      throw err;
+    }
+
     if (response.text.trim()) {
       opts.onText?.(response.text);
       messages.push({ role: 'assistant', content: response.text });
@@ -37,9 +47,10 @@ export async function runAgentTask(messages: ChatMessage[], opts: AgentOptions):
     if (response.toolCalls.length === 0) return messages;
 
     for (const call of response.toolCalls) {
-      console.log(chalk.cyan(`\n→ ${call.name}`), chalk.dim(JSON.stringify(call.input)));
+      console.log(`${chalk.green('●')} ${chalk.bold(call.name)}${chalk.dim('(' + JSON.stringify(call.input) + ')')}`);
       const result = await runTool(ctx, call.name, call.input);
-      const marker = result.ok ? chalk.green('✓') : chalk.red('✗');
+      console.log(result.ok ? chalk.green(`✓ ${call.name}`) : chalk.red(`✗ ${call.name}`));
+      const marker = result.ok ? chalk.green('└') : chalk.red('└');
       console.log(marker, chalk.dim(result.output.slice(0, 2000)));
       messages.push({
         role: 'tool',

@@ -6,6 +6,7 @@ export const defaultConfig = {
     anthropicModel: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest',
     openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
     openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+    nvidiaModel: process.env.NVIDIA_MODEL || 'nvidia/llama-3.1-nemotron-ultra-253b-v1',
     maxToolRounds: Number(process.env.CCODE_MAX_TOOL_ROUNDS || 12)
 };
 export function configDir() {

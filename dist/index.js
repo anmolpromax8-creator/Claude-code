@@ -2,14 +2,15 @@
 import 'dotenv/config';
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { confirm, input, select } from '@inquirer/prompts';
+import { confirm, input, password, select } from '@inquirer/prompts';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { loadConfig, saveConfig, setConfigValue } from './config.js';
 import { runAgentTask, systemPrompt } from './agent.js';
 import { loadSession, newSessionId, saveSession } from './util/session.js';
 import { toolDefinitions } from './tools/registry.js';
-const VERSION = '0.1.1';
+import { readInputBar, renderFrame, renderSplash } from './tui.js';
+const VERSION = '0.2.0';
 const program = new Command();
 program
     .name('ccode')
@@ -35,7 +36,7 @@ program.command('init')
 const configCmd = program.command('config').description('Manage configuration');
 configCmd.command('show').action(async () => console.log(JSON.stringify(await loadConfig(), null, 2)));
 configCmd.command('set <key> <value>').action(async (key, value) => {
-    const allowed = ['provider', 'anthropicModel', 'openaiModel', 'openaiBaseUrl', 'maxToolRounds'];
+    const allowed = ['provider', 'anthropicModel', 'openaiModel', 'openaiBaseUrl', 'nvidiaModel', 'maxToolRounds'];
     if (!allowed.includes(key))
         throw new Error(`Unknown config key. Use one of: ${allowed.join(', ')}`);
     const config = await setConfigValue(key, value);
@@ -52,13 +53,14 @@ program.command('doctor')
     console.log(`${okMark(true)} Node.js ${process.version}`);
     console.log(`${okMark(Boolean(process.env.ANTHROPIC_API_KEY))} ANTHROPIC_API_KEY ${process.env.ANTHROPIC_API_KEY ? 'set' : 'not set'}`);
     console.log(`${okMark(Boolean(process.env.OPENAI_API_KEY))} OPENAI_API_KEY ${process.env.OPENAI_API_KEY ? 'set' : 'not set'}`);
+    console.log(`${okMark(Boolean(process.env.NVIDIA_API_KEY))} NVIDIA_API_KEY ${process.env.NVIDIA_API_KEY ? 'set' : 'not set'}`);
     console.log(`${okMark(await exists(path.join(root, 'package.json')))} package.json ${await exists(path.join(root, 'package.json')) ? 'found' : 'not found'}`);
     console.log(chalk.dim(`Provider: ${config.provider}`));
 });
 program.command('run <task...>')
     .description('Run a one-shot coding task')
     .option('-y, --yes', 'approve file writes and shell commands automatically', false)
-    .option('--provider <provider>', 'anthropic or openai')
+    .option('--provider <provider>', 'anthropic, openai, or nvidia')
     .option('--model <model>', 'override selected provider model')
     .option('--cwd <path>', 'project root', process.cwd())
     .action(async (parts, options) => {
@@ -69,6 +71,7 @@ program.command('run <task...>')
         { role: 'system', content: systemPrompt(root) },
         { role: 'user', content: parts.join(' ') }
     ];
+    await ensureApiKey(config);
     const finalMessages = await runAgentTask(messages, { root, yes: options.yes, config, onText: t => console.log(chalk.white(`\n${t}\n`)) });
     const id = newSessionId();
     const file = await saveSession(root, id, finalMessages);
@@ -77,7 +80,7 @@ program.command('run <task...>')
 program.command('chat', { isDefault: true })
     .description('Start an interactive TUI coding session')
     .option('-y, --yes', 'approve file writes and shell commands automatically', false)
-    .option('--provider <provider>', 'anthropic or openai')
+    .option('--provider <provider>', 'anthropic, openai, or nvidia')
     .option('--model <model>', 'override selected provider model')
     .option('--cwd <path>', 'project root', process.cwd())
     .option('--resume <id>', 'resume session id from .ccode/sessions')
@@ -97,10 +100,11 @@ program.command('chat', { isDefault: true })
     }
     if (options.clear !== false)
         console.clear();
+    renderSplash(VERSION, config.provider, currentModel(config), root);
     renderHeader({ root, config, sessionId, yes });
-    console.log(chalk.dim('Type a task, or type / for the command palette. Use /help for slash commands.'));
+    console.log(chalk.dim('Type a task, or type / for the command palette. Ctrl+O expands the input bar. Use /help for slash commands.'));
     while (true) {
-        const text = await input({ message: chalk.blue('you') });
+        const text = await readInputBar({ provider: config.provider, model: currentModel(config), root });
         const trimmed = text.trim();
         if (!trimmed)
             continue;
@@ -114,6 +118,7 @@ program.command('chat', { isDefault: true })
                 break;
             continue;
         }
+        await ensureApiKey(config);
         messages.push({ role: 'user', content: trimmed });
         messages = await runAgentTask(messages, {
             root,
@@ -160,16 +165,23 @@ async function handleSlash(command, state) {
         case '/provider':
             config.provider = await select({ message: 'Provider', choices: [
                     { name: 'Anthropic', value: 'anthropic' },
-                    { name: 'OpenAI-compatible', value: 'openai' }
+                    { name: 'OpenAI-compatible', value: 'openai' },
+                    { name: 'NVIDIA NIM', value: 'nvidia' }
                 ] });
             await saveConfig(config);
             console.log(chalk.green(`Provider: ${config.provider}`));
+            await ensureApiKey(config);
+            break;
+        case '/apikey':
+            await promptForApiKey(config, true);
             break;
         case '/model': {
-            const current = config.provider === 'anthropic' ? config.anthropicModel : config.openaiModel;
+            const current = currentModel(config);
             const model = await input({ message: `Model for ${config.provider}`, default: current });
             if (config.provider === 'anthropic')
                 config.anthropicModel = model;
+            else if (config.provider === 'nvidia')
+                config.nvidiaModel = model;
             else
                 config.openaiModel = model;
             await saveConfig(config);
@@ -242,6 +254,7 @@ async function commandPalette() {
             { name: '/help      Show slash commands', value: '/help' },
             { name: '/status    Show current session status', value: '/status' },
             { name: '/provider  Switch AI provider', value: '/provider' },
+            { name: '/apikey    Enter API key for this session', value: '/apikey' },
             { name: '/model     Change current provider model', value: '/model' },
             { name: '/tools     List available agent tools', value: '/tools' },
             { name: '/sessions  List saved sessions', value: '/sessions' },
@@ -261,7 +274,8 @@ function printHelp() {
         ['/help', 'show this help'],
         ['/', 'open command palette'],
         ['/status', 'show provider/model/root/session info'],
-        ['/provider', 'switch between Anthropic and OpenAI-compatible APIs'],
+        ['/provider', 'switch between Anthropic, OpenAI-compatible, and NVIDIA NIM APIs'],
+        ['/apikey', 'enter API key for the current provider for this session'],
         ['/model', 'change the current provider model'],
         ['/tools', 'list file, search, edit, and shell tools'],
         ['/sessions', 'list saved sessions'],
@@ -278,19 +292,10 @@ function printHelp() {
     console.log();
 }
 function renderHeader({ root, config, sessionId, yes }) {
-    const model = config.provider === 'anthropic' ? config.anthropicModel : config.openaiModel;
-    const width = Math.min(process.stdout.columns || 88, 100);
-    const line = '─'.repeat(Math.max(20, width - 2));
-    console.log(chalk.cyan(`┌${line}┐`));
-    console.log(chalk.cyan('│') + pad(` CCode AI v${VERSION}  ${chalk.dim('agentic coding TUI')}`, width - 2) + chalk.cyan('│'));
-    console.log(chalk.cyan('├' + line + '┤'));
-    console.log(chalk.cyan('│') + pad(` root: ${root}`, width - 2) + chalk.cyan('│'));
-    console.log(chalk.cyan('│') + pad(` provider: ${config.provider}  model: ${model}  auto-approve: ${yes ? 'on' : 'off'}`, width - 2) + chalk.cyan('│'));
-    console.log(chalk.cyan('│') + pad(` session: ${sessionId}`, width - 2) + chalk.cyan('│'));
-    console.log(chalk.cyan(`└${line}┘`));
+    renderFrame({ version: VERSION, root, provider: config.provider, model: currentModel(config), sessionId, yes });
 }
 function renderStatusLine(state) {
-    const model = state.config.provider === 'anthropic' ? state.config.anthropicModel : state.config.openaiModel;
+    const model = currentModel(state.config);
     console.log(chalk.dim(`\n[${state.config.provider}:${model}] ${state.messages.length} messages · ${state.root} · session ${state.sessionId} · / for commands\n`));
 }
 function pad(text, width) {
@@ -328,16 +333,51 @@ async function listSessions(root) {
         return [];
     }
 }
+function currentModel(config) {
+    if (config.provider === 'anthropic')
+        return config.anthropicModel;
+    if (config.provider === 'nvidia')
+        return config.nvidiaModel;
+    return config.openaiModel;
+}
+function apiKeyEnvName(config) {
+    if (config.provider === 'anthropic')
+        return 'ANTHROPIC_API_KEY';
+    if (config.provider === 'nvidia')
+        return 'NVIDIA_API_KEY';
+    return 'OPENAI_API_KEY';
+}
+async function ensureApiKey(config) {
+    const envName = apiKeyEnvName(config);
+    if (process.env[envName])
+        return;
+    await promptForApiKey(config, false);
+}
+async function promptForApiKey(config, force) {
+    const envName = apiKeyEnvName(config);
+    if (!force && process.env[envName])
+        return;
+    const label = config.provider === 'nvidia'
+        ? 'NVIDIA NIM API key (official base URL: https://integrate.api.nvidia.com/v1)'
+        : `${config.provider} API key`;
+    const value = await password({ message: `Enter ${label}` });
+    if (!value.trim())
+        throw new Error(`${envName} is required for provider ${config.provider}`);
+    process.env[envName] = value.trim();
+    console.log(chalk.green(`${envName} loaded for this session only.`));
+}
 async function withOverrides(provider, model) {
     const config = await loadConfig();
     if (provider) {
-        if (provider !== 'anthropic' && provider !== 'openai')
-            throw new Error('--provider must be anthropic or openai');
+        if (provider !== 'anthropic' && provider !== 'openai' && provider !== 'nvidia')
+            throw new Error('--provider must be anthropic, openai, or nvidia');
         config.provider = provider;
     }
     if (model) {
         if (config.provider === 'anthropic')
             config.anthropicModel = model;
+        else if (config.provider === 'nvidia')
+            config.nvidiaModel = model;
         else
             config.openaiModel = model;
     }

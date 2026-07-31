@@ -36,6 +36,8 @@ ccode-ai
 - API keys are saved locally in `~/.ccode/keys.json` with `0600` permissions after you enter them once
 - `/logout` forgets the saved API key for the current provider
 - More stable compact TUI rendering for narrow/mobile terminals
+- Safer mobile terminal rendering avoids full-width auto-wrap ghost borders
+- Input prompt is now inside one block with live slash suggestions directly below it
 
 ## Features
 

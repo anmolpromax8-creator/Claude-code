@@ -13,7 +13,7 @@ import { toolDefinitions } from './tools/registry.js';
 import { compactText, readInputBar, renderFrame, renderSplash, streamText } from './tui.js';
 import { fetchNvidiaModels, NVIDIA_NIM_BASE_URL } from './providers/nvidia.js';
 
-const VERSION = '0.2.6';
+const VERSION = '0.2.7';
 const program = new Command();
 
 await hydrateEnvFromSavedKeys();

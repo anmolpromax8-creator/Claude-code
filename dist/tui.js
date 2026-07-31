@@ -72,21 +72,22 @@ export async function readInputBar(opts) {
         const displayCursor = Math.min(display.length, expanded ? cursor : Math.min(cursor, max - 1));
         const left = display.slice(0, displayCursor);
         const right = display.slice(displayCursor);
+        const promptLine = `${chalk.blue('>')} ${left}${chalk.inverse(' ')}${right}`;
         const lines = [
             chalk.gray('─'.repeat(width)),
-            chalk.dim(compactText(`${hint} · ${opts.provider} · ${opts.model}`, width))
+            compactText(promptLine, width)
         ];
-        if (expanded)
-            lines.push(chalk.gray(compactText(`↕ expanded input · cwd ${opts.root}`, width)));
         const matches = slashMatches();
         if (matches.length) {
             lines.push(chalk.cyan('slash commands'));
             for (const m of matches)
                 lines.push(compactText(`  ${chalk.cyan(m.cmd.padEnd(12))} ${chalk.dim(m.desc)}`, width));
             if (text === '/')
-                lines.push(chalk.dim('  type more letters to filter, or press enter for full picker'));
+                lines.push(chalk.dim('  type more letters to filter, enter opens picker'));
         }
-        lines.push(`${chalk.blue('>')} ${left}${chalk.inverse(' ')}${right}`);
+        if (expanded)
+            lines.push(chalk.gray(compactText(`expanded · cwd ${opts.root}`, width)));
+        lines.push(chalk.dim(compactText(`${hint} · ${opts.provider} · ${opts.model}`, width)));
         process.stdout.write(lines.join('\n'));
         renderedLines = lines.length;
     };
@@ -152,8 +153,8 @@ export function createThinkingBlock(model) {
         chalk.gray('│ ') + fitPlain(`thinking · ${model}`, inner) + chalk.gray(' │'),
         chalk.gray(`╰${'─'.repeat(width - 2)}╯`)
     ];
-    process.stdout.write(lines.join('\n'));
-    return { stop() { clearLines(lines.length); } };
+    process.stdout.write(lines.join('\n') + '\n');
+    return { stop() { clearLines(lines.length + 1); } };
 }
 export function createSpinner(label) {
     if (!process.stdout.isTTY) {
@@ -294,7 +295,8 @@ function fitPlain(text, width) {
     return compacted + ' '.repeat(Math.max(0, width - plain.length));
 }
 function termWidth() {
-    return Math.min(process.stdout.columns || 88, 100);
+    const cols = process.stdout.columns || 88;
+    return Math.max(40, Math.min(cols - 2, 98));
 }
 function clearLines(count) {
     for (let n = 0; n < count; n++) {
@@ -303,6 +305,7 @@ function clearLines(count) {
         if (n < count - 1)
             readline.moveCursor(process.stdout, 0, -1);
     }
+    readline.cursorTo(process.stdout, 0);
 }
 function stripAnsi(text) {
     return text.replace(/\x1b\[[0-9;]*m/g, '');

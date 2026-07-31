@@ -9,7 +9,7 @@ Repository: <https://github.com/anmolpromax8-creator/Claude-code>
 ### Works immediately from GitHub
 
 ```bash
-npm i -g github:anmolpromax8-creator/Claude-code
+npm i -g https://github.com/anmolpromax8-creator/Claude-code/tarball/main
 ```
 
 Then run:
@@ -22,7 +22,7 @@ ccode-ai --help
 
 ### NPM registry install
 
-The package is prepared for npm under the name `ccode-ai`. After publishing to npm, users can install it with:
+The package is prepared for npm under the name `ccode-ai`. After it is published to npm, users can install it with one short command:
 
 ```bash
 npm i -g ccode-ai

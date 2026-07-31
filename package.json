@@ -4,8 +4,8 @@
   "description": "Original open-source agentic coding assistant CLI for local projects.",
   "type": "module",
   "bin": {
-    "ccode": "./dist/index.js",
-    "ccode-ai": "./dist/index.js"
+    "ccode": "dist/index.js",
+    "ccode-ai": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",

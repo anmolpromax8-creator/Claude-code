@@ -26,6 +26,8 @@ ccode-ai
 - `Ctrl+O` expands/collapses the input bar
 - Animated generating indicator while the model responds
 - Assistant output appears character-by-character in the terminal
+- Thinking block disappears before the final response, instead of leaving “generating” text behind
+- Markdown tables are rendered as compact terminal tables
 - NVIDIA NIM provider support using the official base URL only:
   - `https://integrate.api.nvidia.com/v1`
 - `/model` auto-fetches the available NVIDIA NIM model list from the official `/models` endpoint and lets you pick one
@@ -39,7 +41,7 @@ ccode-ai
 
 - Interactive TUI chat and one-shot task mode
 - Slash command palette: press `/`
-- Slash prefix autocomplete: `/ex` resolves to `/exit`, `/mo` resolves to `/model`
+- Slash prefix autocomplete: type `/ex` then Enter to run `/exit`, `/mo` then Enter to run `/model`
 - Slash commands:
   - `/help` show commands
   - `/status` show provider/model/session/root

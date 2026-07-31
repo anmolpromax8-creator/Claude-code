@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { createProvider } from './providers/index.js';
 import { runTool, toolDefinitions } from './tools/registry.js';
-import { createSpinner } from './tui.js';
+import { createThinkingBlock, formatToolOutput } from './tui.js';
 import { AppConfig, ChatMessage, ToolContext } from './types.js';
 
 export function systemPrompt(root: string): string {
@@ -15,6 +15,7 @@ Rules:
 - Run tests or build commands when useful.
 - Never try to access paths outside the project root.
 - If the user's request is ambiguous or too broad, ask a concise clarifying question and offer likely choices before making changes.
+- Use markdown tables when comparing structured data, but keep tables compact for narrow terminals.
 - Be concise in final answers.`;
 }
 
@@ -25,18 +26,24 @@ export interface AgentOptions {
   onText?: (text: string) => void | Promise<void>;
 }
 
+function currentModel(config: AppConfig): string {
+  if (config.provider === 'anthropic') return config.anthropicModel;
+  if (config.provider === 'nvidia') return config.nvidiaModel;
+  return config.openaiModel;
+}
+
 export async function runAgentTask(messages: ChatMessage[], opts: AgentOptions): Promise<ChatMessage[]> {
   const provider = createProvider(opts.config);
   const ctx: ToolContext = { root: opts.root, yes: opts.yes };
 
   for (let round = 0; round < opts.config.maxToolRounds; round++) {
-    const thinking = createSpinner(`Generating with ${provider.name}`);
+    const thinking = createThinkingBlock(currentModel(opts.config));
     let response;
     try {
       response = await provider.complete(messages, toolDefinitions);
-      thinking.stop(chalk.green(`✓ ${provider.name} responded`));
+      thinking.stop();
     } catch (err) {
-      thinking.stop(chalk.red(`✗ ${provider.name} failed`));
+      thinking.stop();
       throw err;
     }
 
@@ -52,7 +59,7 @@ export async function runAgentTask(messages: ChatMessage[], opts: AgentOptions):
       const result = await runTool(ctx, call.name, call.input);
       console.log(result.ok ? chalk.green(`✓ ${call.name}`) : chalk.red(`✗ ${call.name}`));
       const marker = result.ok ? chalk.green('└') : chalk.red('└');
-      console.log(marker, chalk.dim(result.output.slice(0, 2000)));
+      console.log(marker, chalk.dim(formatToolOutput(result.output.slice(0, 4000))));
       messages.push({
         role: 'tool',
         name: call.name,

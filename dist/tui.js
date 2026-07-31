@@ -44,7 +44,7 @@ export async function readInputBar(opts) {
     let cursor = 0;
     let expanded = false;
     const width = termWidth();
-    const hint = `esc cancel · ctrl+o expand · enter send · / commands · ${opts.provider} · ${opts.model}`;
+    const hint = `esc cancel · ctrl+o expand · enter send · type / then enter for commands · ${opts.provider} · ${opts.model}`;
     console.log(chalk.gray('─'.repeat(width)));
     console.log(chalk.dim(compactText(hint, width)));
     const draw = () => {
@@ -87,8 +87,6 @@ export async function readInputBar(opts) {
             }
             if ((key.name === 'return') || (key.name === 'enter'))
                 return done(text.trim());
-            if (!text && str === '/')
-                return done('/');
             if (key.name === 'backspace') {
                 if (cursor > 0) {
                     text = text.slice(0, cursor - 1) + text.slice(cursor);
@@ -119,6 +117,33 @@ export async function readInputBar(opts) {
         process.stdin.on('keypress', onKey);
     });
 }
+export function createThinkingBlock(model) {
+    if (!process.stdout.isTTY) {
+        return { stop: () => undefined };
+    }
+    const width = termWidth();
+    const inner = width - 4;
+    const frames = ['◐', '◓', '◑', '◒'];
+    let i = 0;
+    let lines = 3;
+    const draw = () => {
+        process.stdout.write(chalk.gray(`╭${'─'.repeat(width - 2)}╮\n`));
+        process.stdout.write(chalk.gray('│ ') + fitPlain(`${frames[i]} thinking · ${model}`, inner) + chalk.gray(' │\n'));
+        process.stdout.write(chalk.gray(`╰${'─'.repeat(width - 2)}╯`));
+    };
+    draw();
+    const timer = setInterval(() => {
+        i = (i + 1) % frames.length;
+        clearLines(lines);
+        draw();
+    }, 120);
+    return {
+        stop() {
+            clearInterval(timer);
+            clearLines(lines);
+        }
+    };
+}
 export function createSpinner(label) {
     if (!process.stdout.isTTY) {
         process.stdout.write(`${label}...\n`);
@@ -135,28 +160,73 @@ export function createSpinner(label) {
     return {
         stop(text) {
             clearInterval(timer);
-            process.stdout.write(`\r\x1b[2K${text ? compactText(text, termWidth()) : chalk.green('✓ ' + safeLabel)}\n`);
+            process.stdout.write(`\r\x1b[2K${text ? compactText(text, termWidth()) + '\n' : ''}`);
         }
     };
 }
 export async function streamText(text, prefix = '') {
+    const formatted = formatMarkdownTables(text, termWidth());
     if (prefix)
         process.stdout.write(prefix);
     if (!process.stdout.isTTY || process.env.CCODE_NO_TYPEWRITER === '1') {
-        process.stdout.write(text + '\n');
+        process.stdout.write(formatted + '\n');
         return;
     }
-    for (const ch of text) {
+    for (const ch of formatted) {
         process.stdout.write(ch);
-        await new Promise(r => setTimeout(r, ch === '\n' ? 8 : 3));
+        await new Promise(r => setTimeout(r, ch === '\n' ? 5 : 2));
     }
     process.stdout.write('\n');
+}
+export function formatToolOutput(text) {
+    const width = termWidth();
+    return text.split(/\r?\n/).map(line => compactText(line, width)).join('\n');
 }
 export function compactText(text, width) {
     const plain = stripAnsi(text);
     if (plain.length <= width)
         return text;
     return plain.slice(0, Math.max(1, width - 1)) + '…';
+}
+function formatMarkdownTables(text, width) {
+    const lines = text.split(/\r?\n/);
+    const out = [];
+    for (let i = 0; i < lines.length;) {
+        if (isTableStart(lines, i)) {
+            const table = [];
+            while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].includes('|'))
+                table.push(lines[i++]);
+            out.push(renderMarkdownTable(table, width));
+        }
+        else {
+            out.push(lines[i++]);
+        }
+    }
+    return out.join('\n');
+}
+function isTableStart(lines, i) {
+    return i + 1 < lines.length && lines[i].trim().startsWith('|') && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[i + 1]);
+}
+function renderMarkdownTable(lines, width) {
+    const rows = lines.filter((_, i) => i !== 1).map(parseTableRow);
+    if (!rows.length)
+        return lines.join('\n');
+    const cols = Math.max(...rows.map(r => r.length));
+    const maxInner = Math.max(20, width - (cols * 3 + 1));
+    const base = Math.max(8, Math.floor(maxInner / cols));
+    const colWidths = Array.from({ length: cols }, (_, c) => {
+        const maxLen = Math.max(...rows.map(r => (r[c] || '').length), 6);
+        return Math.min(24, Math.max(6, Math.min(maxLen, base)));
+    });
+    const border = '┌' + colWidths.map(w => '─'.repeat(w + 2)).join('┬') + '┐';
+    const sep = '├' + colWidths.map(w => '─'.repeat(w + 2)).join('┼') + '┤';
+    const end = '└' + colWidths.map(w => '─'.repeat(w + 2)).join('┴') + '┘';
+    const renderRow = (r) => '│' + colWidths.map((w, c) => ' ' + fitPlain(r[c] || '', w) + ' ').join('│') + '│';
+    const rendered = [border, renderRow(rows[0]), sep, ...rows.slice(1).map(renderRow), end];
+    return rendered.map(l => compactText(l, width)).join('\n');
+}
+function parseTableRow(line) {
+    return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim().replace(/`/g, ''));
 }
 function compactAroundCursor(text, cursor, width) {
     if (text.length <= width)
@@ -177,6 +247,14 @@ function fitPlain(text, width) {
 }
 function termWidth() {
     return Math.min(process.stdout.columns || 88, 100);
+}
+function clearLines(count) {
+    for (let n = 0; n < count; n++) {
+        readline.cursorTo(process.stdout, 0);
+        readline.clearLine(process.stdout, 0);
+        if (n < count - 1)
+            readline.moveCursor(process.stdout, 0, -1);
+    }
 }
 function stripAnsi(text) {
     return text.replace(/\x1b\[[0-9;]*m/g, '');

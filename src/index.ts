@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import { confirm, input, password, select } from '@inquirer/prompts';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { configDir, loadConfig, saveConfig, setConfigValue } from './config.js';
+import { configDir, deleteSavedApiKey, envNameForProvider, hydrateEnvFromSavedKeys, loadConfig, loadSavedApiKeys, saveApiKey, saveConfig, setConfigValue } from './config.js';
 import { runAgentTask, systemPrompt } from './agent.js';
 import { AppConfig, ChatMessage, ProviderName } from './types.js';
 import { loadSession, newSessionId, saveSession } from './util/session.js';
@@ -13,8 +13,10 @@ import { toolDefinitions } from './tools/registry.js';
 import { compactText, readInputBar, renderFrame, renderSplash, streamText } from './tui.js';
 import { fetchNvidiaModels, NVIDIA_NIM_BASE_URL } from './providers/nvidia.js';
 
-const VERSION = '0.2.3';
+const VERSION = '0.2.4';
 const program = new Command();
+
+await hydrateEnvFromSavedKeys();
 
 program
   .name('ccode')
@@ -56,9 +58,10 @@ program.command('doctor')
     renderHeader({ root, config, sessionId: 'doctor', yes: false });
     console.log(chalk.bold('Doctor check'));
     console.log(`${okMark(true)} Node.js ${process.version}`);
-    console.log(`${okMark(Boolean(process.env.ANTHROPIC_API_KEY))} ANTHROPIC_API_KEY ${process.env.ANTHROPIC_API_KEY ? 'set' : 'not set'}`);
-    console.log(`${okMark(Boolean(process.env.OPENAI_API_KEY))} OPENAI_API_KEY ${process.env.OPENAI_API_KEY ? 'set' : 'not set'}`);
-    console.log(`${okMark(Boolean(process.env.NVIDIA_API_KEY))} NVIDIA_API_KEY ${process.env.NVIDIA_API_KEY ? 'set' : 'not set'}`);
+    const savedKeys = await loadSavedApiKeys();
+    console.log(`${okMark(Boolean(process.env.ANTHROPIC_API_KEY))} ANTHROPIC_API_KEY ${process.env.ANTHROPIC_API_KEY ? (savedKeys.ANTHROPIC_API_KEY ? 'saved' : 'set') : 'not set'}`);
+    console.log(`${okMark(Boolean(process.env.OPENAI_API_KEY))} OPENAI_API_KEY ${process.env.OPENAI_API_KEY ? (savedKeys.OPENAI_API_KEY ? 'saved' : 'set') : 'not set'}`);
+    console.log(`${okMark(Boolean(process.env.NVIDIA_API_KEY))} NVIDIA_API_KEY ${process.env.NVIDIA_API_KEY ? (savedKeys.NVIDIA_API_KEY ? 'saved' : 'set') : 'not set'}`);
     console.log(`${okMark(await exists(path.join(root, 'package.json')))} package.json ${await exists(path.join(root, 'package.json')) ? 'found' : 'not found'}`);
     console.log(chalk.dim(`Provider: ${config.provider}`));
   });
@@ -216,6 +219,10 @@ async function handleSlash(command: string, state: UiState): Promise<SlashResult
       await promptForApiKey(config, true);
       break;
 
+    case '/logout':
+      await forgetCurrentApiKey(config);
+      break;
+
     case '/model': {
       if (config.provider === 'nvidia') {
         const model = await chooseNvidiaModel(config);
@@ -304,6 +311,7 @@ const slashCommands = [
   { cmd: '/provider', desc: 'Switch AI provider' },
   { cmd: '/apikey', desc: 'Enter API key for this session' },
   { cmd: '/model', desc: 'Change current provider model' },
+  { cmd: '/logout', desc: 'Forget saved API key for current provider' },
   { cmd: '/tools', desc: 'List available agent tools' },
   { cmd: '/sessions', desc: 'List saved sessions' },
   { cmd: '/resume', desc: 'Resume a saved session' },
@@ -347,6 +355,7 @@ function printHelp(): void {
     ['/provider', 'switch between Anthropic, OpenAI-compatible, and NVIDIA NIM APIs'],
     ['/apikey', 'enter API key for the current provider for this session'],
     ['/model', 'change the current provider model'],
+    ['/logout', 'forget saved API key for current provider'],
     ['/tools', 'list file, search, edit, and shell tools'],
     ['/sessions', 'list saved sessions'],
     ['/resume', 'resume a saved session'],
@@ -410,9 +419,7 @@ function currentModel(config: AppConfig): string {
 }
 
 function apiKeyEnvName(config: AppConfig): 'ANTHROPIC_API_KEY' | 'OPENAI_API_KEY' | 'NVIDIA_API_KEY' {
-  if (config.provider === 'anthropic') return 'ANTHROPIC_API_KEY';
-  if (config.provider === 'nvidia') return 'NVIDIA_API_KEY';
-  return 'OPENAI_API_KEY';
+  return envNameForProvider(config.provider);
 }
 
 async function ensureApiKey(config: AppConfig): Promise<void> {
@@ -433,7 +440,16 @@ async function promptForApiKey(config: AppConfig, force: boolean): Promise<void>
     return;
   }
   process.env[envName] = value.trim();
-  console.log(chalk.green(`${envName} loaded for this session only.`));
+  await saveApiKey(envName, value.trim());
+  console.log(chalk.green(`${envName} saved locally and loaded.`));
+}
+
+
+async function forgetCurrentApiKey(config: AppConfig): Promise<void> {
+  const envName = apiKeyEnvName(config);
+  delete process.env[envName];
+  await deleteSavedApiKey(envName);
+  console.log(chalk.green(`Forgot saved ${envName}.`));
 }
 
 async function chooseNvidiaModel(config: AppConfig): Promise<string> {

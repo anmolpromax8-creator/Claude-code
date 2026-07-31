@@ -29,7 +29,11 @@ ccode-ai
 - NVIDIA NIM provider support using the official base URL only:
   - `https://integrate.api.nvidia.com/v1`
 - `/model` auto-fetches the available NVIDIA NIM model list from the official `/models` endpoint and lets you pick one
-- If the selected provider API key is missing, the CLI asks for it securely for the current session
+- If the selected provider API key is missing, the CLI asks for it securely
+
+- API keys are saved locally in `~/.ccode/keys.json` with `0600` permissions after you enter them once
+- `/logout` forgets the saved API key for the current provider
+- More stable compact TUI rendering for narrow/mobile terminals
 
 ## Features
 
@@ -40,7 +44,8 @@ ccode-ai
   - `/help` show commands
   - `/status` show provider/model/session/root
   - `/provider` switch Anthropic/OpenAI-compatible/NVIDIA NIM provider
-  - `/apikey` enter API key for current provider for this session
+  - `/apikey` enter and save API key for current provider
+  - `/logout` forget saved API key for current provider
   - `/model` change model; on NVIDIA this fetches the live model list automatically
   - `/tools` list available agent tools
   - `/sessions` list saved sessions
@@ -67,7 +72,7 @@ ccode-ai
 
 ## API keys
 
-Set any provider key ahead of time, or let the CLI ask when needed:
+Set any provider key ahead of time, or let the CLI ask when needed. When entered in the CLI, keys are saved locally in `~/.ccode/keys.json` with file mode `0600`. Use `/logout` to forget the current provider key.
 
 ```bash
 export ANTHROPIC_API_KEY="..."

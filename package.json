@@ -1,7 +1,7 @@
 {
   "name": "ccode-ai",
-  "version": "0.2.3",
-  "description": "Original open-source agentic coding assistant CLI with an improved terminal TUI, slash commands, and NVIDIA NIM support.",
+  "version": "0.2.4",
+  "description": "Original open-source agentic coding assistant CLI with persistent API keys, improved terminal TUI, slash commands, and NVIDIA NIM support.",
   "type": "module",
   "bin": {
     "ccode": "dist/index.js",

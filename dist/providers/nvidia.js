@@ -1,4 +1,4 @@
-const NVIDIA_NIM_BASE_URL = 'https://integrate.api.nvidia.com/v1';
+export const NVIDIA_NIM_BASE_URL = 'https://integrate.api.nvidia.com/v1';
 export class NvidiaProvider {
     config;
     name = 'nvidia';
@@ -37,6 +37,22 @@ export class NvidiaProvider {
         })).filter((x) => x.name);
         return { text, toolCalls, raw: json };
     }
+}
+export async function fetchNvidiaModels(apiKey) {
+    if (!apiKey)
+        throw new Error('NVIDIA_API_KEY is required to fetch NVIDIA NIM models');
+    const res = await fetch(`${NVIDIA_NIM_BASE_URL}/models`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' }
+    });
+    if (!res.ok)
+        throw new Error(`NVIDIA model fetch failed ${res.status}: ${await res.text()}`);
+    const json = await res.json();
+    const data = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+    return data
+        .map((m) => ({ id: String(m.id || m.name || '').trim(), ownedBy: m.owned_by || m.ownedBy }))
+        .filter((m) => m.id)
+        .sort((a, b) => a.id.localeCompare(b.id));
 }
 function parseArgs(s) {
     try {

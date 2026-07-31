@@ -27,6 +27,7 @@ ccode-ai
 - Animated generating indicator while the model responds
 - NVIDIA NIM provider support using the official base URL only:
   - `https://integrate.api.nvidia.com/v1`
+- `/model` auto-fetches the available NVIDIA NIM model list from the official `/models` endpoint and lets you pick one
 - If the selected provider API key is missing, the CLI asks for it securely for the current session
 
 ## Features
@@ -38,7 +39,7 @@ ccode-ai
   - `/status` show provider/model/session/root
   - `/provider` switch Anthropic/OpenAI-compatible/NVIDIA NIM provider
   - `/apikey` enter API key for current provider for this session
-  - `/model` change model
+  - `/model` change model; on NVIDIA this fetches the live model list automatically
   - `/tools` list available agent tools
   - `/sessions` list saved sessions
   - `/resume` resume a saved session

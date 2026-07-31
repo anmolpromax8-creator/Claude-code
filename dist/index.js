@@ -5,12 +5,13 @@ import chalk from 'chalk';
 import { confirm, input, password, select } from '@inquirer/prompts';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { loadConfig, saveConfig, setConfigValue } from './config.js';
+import { configDir, loadConfig, saveConfig, setConfigValue } from './config.js';
 import { runAgentTask, systemPrompt } from './agent.js';
 import { loadSession, newSessionId, saveSession } from './util/session.js';
 import { toolDefinitions } from './tools/registry.js';
 import { readInputBar, renderFrame, renderSplash } from './tui.js';
-const VERSION = '0.2.1';
+import { fetchNvidiaModels, NVIDIA_NIM_BASE_URL } from './providers/nvidia.js';
+const VERSION = '0.2.2';
 const program = new Command();
 program
     .name('ccode')
@@ -183,12 +184,17 @@ async function handleSlash(command, state) {
             await promptForApiKey(config, true);
             break;
         case '/model': {
+            if (config.provider === 'nvidia') {
+                const model = await chooseNvidiaModel(config);
+                config.nvidiaModel = model;
+                await saveConfig(config);
+                console.log(chalk.green(`NVIDIA model: ${model}`));
+                break;
+            }
             const current = currentModel(config);
             const model = await input({ message: `Model for ${config.provider}`, default: current });
             if (config.provider === 'anthropic')
                 config.anthropicModel = model;
-            else if (config.provider === 'nvidia')
-                config.nvidiaModel = model;
             else
                 config.openaiModel = model;
             await saveConfig(config);
@@ -374,6 +380,64 @@ async function promptForApiKey(config, force) {
     }
     process.env[envName] = value.trim();
     console.log(chalk.green(`${envName} loaded for this session only.`));
+}
+async function chooseNvidiaModel(config) {
+    await ensureApiKey(config);
+    const apiKey = process.env.NVIDIA_API_KEY || '';
+    const cached = await loadCachedNvidiaModels();
+    try {
+        console.log(chalk.dim(`Fetching NVIDIA NIM models from ${NVIDIA_NIM_BASE_URL}/models ...`));
+        const models = await fetchNvidiaModels(apiKey);
+        if (models.length) {
+            await saveCachedNvidiaModels(models.map(m => m.id));
+            return select({
+                message: 'Select NVIDIA NIM model',
+                pageSize: 12,
+                choices: [
+                    ...models.map(m => ({
+                        name: `${m.id}${m.ownedBy ? chalk.dim(` · ${m.ownedBy}`) : ''}`,
+                        value: m.id
+                    })),
+                    { name: 'Write-in custom model id...', value: '__custom__' }
+                ]
+            }).then(async (picked) => picked === '__custom__'
+                ? input({ message: 'NVIDIA model id', default: config.nvidiaModel })
+                : picked);
+        }
+    }
+    catch (err) {
+        console.log(chalk.yellow(`Could not fetch NVIDIA models: ${err?.message || String(err)}`));
+    }
+    if (cached.length) {
+        console.log(chalk.dim('Using cached NVIDIA model list.'));
+        return select({
+            message: 'Select cached NVIDIA model',
+            pageSize: 12,
+            choices: [
+                ...cached.map(id => ({ name: id, value: id })),
+                { name: 'Write-in custom model id...', value: '__custom__' }
+            ]
+        }).then(async (picked) => picked === '__custom__'
+            ? input({ message: 'NVIDIA model id', default: config.nvidiaModel })
+            : picked);
+    }
+    return input({ message: 'NVIDIA model id', default: config.nvidiaModel });
+}
+async function nvidiaModelCachePath() {
+    return path.join(configDir(), 'nvidia-models-cache.json');
+}
+async function loadCachedNvidiaModels() {
+    try {
+        const raw = JSON.parse(await fs.readFile(await nvidiaModelCachePath(), 'utf8'));
+        return Array.isArray(raw?.models) ? raw.models.filter((x) => typeof x === 'string') : [];
+    }
+    catch {
+        return [];
+    }
+}
+async function saveCachedNvidiaModels(models) {
+    await fs.mkdir(configDir(), { recursive: true });
+    await fs.writeFile(await nvidiaModelCachePath(), JSON.stringify({ updatedAt: new Date().toISOString(), models }, null, 2));
 }
 async function withOverrides(provider, model) {
     const config = await loadConfig();

@@ -12,7 +12,7 @@ import { loadSession, newSessionId, saveSession } from './util/session.js';
 import { toolDefinitions } from './tools/registry.js';
 import { readInputBar, renderFrame, renderSplash } from './tui.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.2.1';
 const program = new Command();
 
 program
@@ -108,7 +108,8 @@ program.command('chat', { isDefault: true })
     if (options.clear !== false) console.clear();
     renderSplash(VERSION, config.provider, currentModel(config), root);
     renderHeader({ root, config, sessionId, yes });
-    console.log(chalk.dim('Type a task, or type / for the command palette. Ctrl+O expands the input bar. Use /help for slash commands.'));
+    console.log(chalk.dim('Type a task, or press / to open the slash-command palette. Ctrl+O expands the input bar.'));
+    await ensureApiKey(config);
 
     while (true) {
       const text = await readInputBar({ provider: config.provider, model: currentModel(config), root });
@@ -127,13 +128,18 @@ program.command('chat', { isDefault: true })
 
       await ensureApiKey(config);
       messages.push({ role: 'user', content: trimmed });
-      messages = await runAgentTask(messages, {
-        root,
-        yes,
-        config,
-        onText: t => console.log(chalk.white(`\n${chalk.bold('assistant')}\n${t}\n`))
-      });
-      await saveSession(root, sessionId, messages);
+      try {
+        messages = await runAgentTask(messages, {
+          root,
+          yes,
+          config,
+          onText: t => console.log(chalk.white(`\n${chalk.bold('assistant')}\n${t}\n`))
+        });
+        await saveSession(root, sessionId, messages);
+      } catch (err: any) {
+        console.log(chalk.red(err?.message || String(err)));
+        console.log(chalk.dim('Use /apikey to enter a new key or /provider to switch providers.'));
+      }
       renderStatusLine({ root, config, sessionId, yes, messages });
     }
 
@@ -389,7 +395,10 @@ async function promptForApiKey(config: AppConfig, force: boolean): Promise<void>
     ? 'NVIDIA NIM API key (official base URL: https://integrate.api.nvidia.com/v1)'
     : `${config.provider} API key`;
   const value = await password({ message: `Enter ${label}` });
-  if (!value.trim()) throw new Error(`${envName} is required for provider ${config.provider}`);
+  if (!value.trim()) {
+    console.log(chalk.yellow(`${envName} not set. You can use /apikey later.`));
+    return;
+  }
   process.env[envName] = value.trim();
   console.log(chalk.green(`${envName} loaded for this session only.`));
 }

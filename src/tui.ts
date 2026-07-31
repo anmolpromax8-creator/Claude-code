@@ -2,10 +2,16 @@ import readline from 'node:readline';
 import chalk from 'chalk';
 import { input } from '@inquirer/prompts';
 
+export interface SlashCommandHint {
+  cmd: string;
+  desc: string;
+}
+
 export interface InputBarOptions {
   provider: string;
   model: string;
   root: string;
+  slashCommands?: SlashCommandHint[];
 }
 
 const logo = [
@@ -54,27 +60,48 @@ export async function readInputBar(opts: InputBarOptions): Promise<string> {
   let text = '';
   let cursor = 0;
   let expanded = false;
+  let renderedLines = 0;
   const width = termWidth();
-  const hint = `esc cancel · ctrl+o expand · enter send · type / then enter for commands · ${opts.provider} · ${opts.model}`;
+  const hint = `esc cancel · ctrl+o expand · enter send · slash commands autocomplete with /`;
 
-  console.log(chalk.gray('─'.repeat(width)));
-  console.log(chalk.dim(compactText(hint, width)));
+  const clearBlock = () => {
+    if (!renderedLines) return;
+    for (let n = 0; n < renderedLines; n++) {
+      readline.cursorTo(process.stdout, 0);
+      readline.clearLine(process.stdout, 0);
+      if (n < renderedLines - 1) readline.moveCursor(process.stdout, 0, -1);
+    }
+    renderedLines = 0;
+  };
+
+  const slashMatches = () => {
+    if (!text.startsWith('/')) return [] as SlashCommandHint[];
+    const q = text.trim();
+    if (!q || q === '/') return (opts.slashCommands || []).slice(0, 8);
+    return (opts.slashCommands || []).filter(c => c.cmd.startsWith(q)).slice(0, 8);
+  };
 
   const draw = () => {
+    clearBlock();
     const max = Math.max(10, width - 4);
     const display = expanded ? text : compactAroundCursor(text, cursor, max);
     const displayCursor = Math.min(display.length, expanded ? cursor : Math.min(cursor, max - 1));
     const left = display.slice(0, displayCursor);
     const right = display.slice(displayCursor);
-    readline.cursorTo(process.stdout, 0);
-    readline.clearLine(process.stdout, 0);
-    process.stdout.write(`${chalk.blue('>')} ${left}${chalk.inverse(' ')}${right}`);
-  };
-
-  const printExpandedHint = () => {
-    readline.cursorTo(process.stdout, 0);
-    readline.clearLine(process.stdout, 0);
-    console.log(chalk.gray(compactText(`↕ expanded input · cwd ${opts.root}`, width)));
+    const lines: string[] = [
+      chalk.gray('─'.repeat(width)),
+      chalk.dim(compactText(`${hint} · ${opts.provider} · ${opts.model}`, width))
+    ];
+    if (expanded) lines.push(chalk.gray(compactText(`↕ expanded input · cwd ${opts.root}`, width)));
+    const matches = slashMatches();
+    if (matches.length) {
+      lines.push(chalk.cyan('slash commands'));
+      for (const m of matches) lines.push(compactText(`  ${chalk.cyan(m.cmd.padEnd(12))} ${chalk.dim(m.desc)}`, width));
+      if (text === '/') lines.push(chalk.dim('  type more letters to filter, or press enter for full picker'));
+    }
+    lines.push(`${chalk.blue('>')} ${left}${chalk.inverse(' ')}${right}`);
+    process.stdout.write(lines.join('\n'));
+    renderedLines = lines.length;
   };
 
   draw();
@@ -83,8 +110,7 @@ export async function readInputBar(opts: InputBarOptions): Promise<string> {
     const done = (value: string) => {
       process.stdin.off('keypress', onKey);
       process.stdin.setRawMode(wasRaw ?? false);
-      readline.cursorTo(process.stdout, 0);
-      readline.clearLine(process.stdout, 0);
+      clearBlock();
       if (value) console.log(`${chalk.green('✓')} ${chalk.bold('you')} ${value}`);
       resolve(value);
     };
@@ -92,12 +118,7 @@ export async function readInputBar(opts: InputBarOptions): Promise<string> {
     const onKey = (str: string, key: readline.Key) => {
       if (key.ctrl && key.name === 'c') return done('/exit');
       if (key.name === 'escape') return done('');
-      if (key.ctrl && key.name === 'o') {
-        expanded = !expanded;
-        if (expanded) printExpandedHint();
-        draw();
-        return;
-      }
+      if (key.ctrl && key.name === 'o') { expanded = !expanded; draw(); return; }
       if ((key.name === 'return') || (key.name === 'enter')) return done(text.trim());
 
       if (key.name === 'backspace') {
@@ -127,31 +148,16 @@ export async function readInputBar(opts: InputBarOptions): Promise<string> {
 }
 
 export function createThinkingBlock(model: string) {
-  if (!process.stdout.isTTY) {
-    return { stop: () => undefined };
-  }
+  if (!process.stdout.isTTY) return { stop: () => undefined };
   const width = termWidth();
   const inner = width - 4;
-  const frames = ['◐', '◓', '◑', '◒'];
-  let i = 0;
-  let lines = 3;
-  const draw = () => {
-    process.stdout.write(chalk.gray(`╭${'─'.repeat(width - 2)}╮\n`));
-    process.stdout.write(chalk.gray('│ ') + fitPlain(`${frames[i]} thinking · ${model}`, inner) + chalk.gray(' │\n'));
-    process.stdout.write(chalk.gray(`╰${'─'.repeat(width - 2)}╯`));
-  };
-  draw();
-  const timer = setInterval(() => {
-    i = (i + 1) % frames.length;
-    clearLines(lines);
-    draw();
-  }, 120);
-  return {
-    stop() {
-      clearInterval(timer);
-      clearLines(lines);
-    }
-  };
+  const lines = [
+    chalk.gray(`╭${'─'.repeat(width - 2)}╮`),
+    chalk.gray('│ ') + fitPlain(`thinking · ${model}`, inner) + chalk.gray(' │'),
+    chalk.gray(`╰${'─'.repeat(width - 2)}╯`)
+  ];
+  process.stdout.write(lines.join('\n'));
+  return { stop() { clearLines(lines.length); } };
 }
 
 export function createSpinner(label: string) {
@@ -176,7 +182,7 @@ export function createSpinner(label: string) {
 }
 
 export async function streamText(text: string, prefix = ''): Promise<void> {
-  const formatted = formatMarkdownTables(text, termWidth());
+  const formatted = wrapPlainText(formatMarkdownTables(text, termWidth()), termWidth());
   if (prefix) process.stdout.write(prefix);
   if (!process.stdout.isTTY || process.env.CCODE_NO_TYPEWRITER === '1') {
     process.stdout.write(formatted + '\n');
@@ -239,6 +245,35 @@ function renderMarkdownTable(lines: string[], width: number): string {
 
 function parseTableRow(line: string): string[] {
   return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim().replace(/`/g, ''));
+}
+
+
+function wrapPlainText(text: string, width: number): string {
+  const lines = text.split(/\r?\n/);
+  const out: string[] = [];
+  for (const line of lines) {
+    if (!line.trim()) { out.push(line); continue; }
+    if (/^[┌├└│]/.test(line) || /^\s*[-*]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line) || /^\s{2,}/.test(line)) {
+      out.push(...wrapLine(line, width));
+    } else {
+      out.push(...wrapLine(line, width));
+    }
+  }
+  return out.join('\n');
+}
+
+function wrapLine(line: string, width: number): string[] {
+  if (stripAnsi(line).length <= width) return [line];
+  const words = line.split(/\s+/);
+  const out: string[] = [];
+  let cur = '';
+  for (const word of words) {
+    if (!cur) cur = word;
+    else if ((cur + ' ' + word).length <= width) cur += ' ' + word;
+    else { out.push(cur); cur = word; }
+  }
+  if (cur) out.push(cur);
+  return out;
 }
 
 function compactAroundCursor(text: string, cursor: number, width: number): string {

@@ -11,7 +11,7 @@ import { loadSession, newSessionId, saveSession } from './util/session.js';
 import { toolDefinitions } from './tools/registry.js';
 import { compactText, readInputBar, renderFrame, renderSplash, streamText } from './tui.js';
 import { fetchNvidiaModels, NVIDIA_NIM_BASE_URL } from './providers/nvidia.js';
-const VERSION = '0.2.5';
+const VERSION = '0.2.6';
 const program = new Command();
 await hydrateEnvFromSavedKeys();
 program
@@ -112,7 +112,7 @@ program.command('chat', { isDefault: true })
     console.log(chalk.dim('Type a task, or press / to open the slash-command palette. Ctrl+O expands the input bar.'));
     await ensureApiKey(config);
     while (true) {
-        const text = await readInputBar({ provider: config.provider, model: currentModel(config), root });
+        const text = await readInputBar({ provider: config.provider, model: currentModel(config), root, slashCommands });
         const trimmed = text.trim();
         if (!trimmed)
             continue;

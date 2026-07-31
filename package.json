@@ -1,17 +1,19 @@
 {
-  "name": "claude-code-compatible-cli",
+  "name": "ccode-ai",
   "version": "0.1.0",
-  "description": "Original open-source coding assistant CLI inspired by modern agentic code tools. Not affiliated with Anthropic Claude Code.",
+  "description": "Original open-source agentic coding assistant CLI for local projects.",
   "type": "module",
   "bin": {
     "ccode": "./dist/index.js",
-    "claude-code-local": "./dist/index.js"
+    "ccode-ai": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "prepare": "npm run build",
+    "prepack": "npm run build"
   },
   "keywords": [
     "cli",
@@ -19,7 +21,7 @@
     "ai",
     "developer-tools"
   ],
-  "author": "",
+  "author": "anmolpromax8-creator",
   "license": "MIT",
   "dependencies": {
     "@inquirer/prompts": "^8.5.2",
@@ -36,5 +38,22 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anmolpromax8-creator/Claude-code.git"
+  },
+  "homepage": "https://github.com/anmolpromax8-creator/Claude-code#readme",
+  "bugs": {
+    "url": "https://github.com/anmolpromax8-creator/Claude-code/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

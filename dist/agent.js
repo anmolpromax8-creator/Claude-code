@@ -12,6 +12,7 @@ Rules:
 - Prefer replace_in_file for small edits and write_file for new/full files.
 - Run tests or build commands when useful.
 - Never try to access paths outside the project root.
+- If the user's request is ambiguous or too broad, ask a concise clarifying question and offer likely choices before making changes.
 - Be concise in final answers.`;
 }
 export async function runAgentTask(messages, opts) {
@@ -29,7 +30,7 @@ export async function runAgentTask(messages, opts) {
             throw err;
         }
         if (response.text.trim()) {
-            opts.onText?.(response.text);
+            await opts.onText?.(response.text);
             messages.push({ role: 'assistant', content: response.text });
         }
         if (response.toolCalls.length === 0)

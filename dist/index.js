@@ -9,9 +9,9 @@ import { configDir, loadConfig, saveConfig, setConfigValue } from './config.js';
 import { runAgentTask, systemPrompt } from './agent.js';
 import { loadSession, newSessionId, saveSession } from './util/session.js';
 import { toolDefinitions } from './tools/registry.js';
-import { readInputBar, renderFrame, renderSplash } from './tui.js';
+import { compactText, readInputBar, renderFrame, renderSplash, streamText } from './tui.js';
 import { fetchNvidiaModels, NVIDIA_NIM_BASE_URL } from './providers/nvidia.js';
-const VERSION = '0.2.2';
+const VERSION = '0.2.3';
 const program = new Command();
 program
     .name('ccode')
@@ -73,7 +73,11 @@ program.command('run <task...>')
         { role: 'user', content: parts.join(' ') }
     ];
     await ensureApiKey(config);
-    const finalMessages = await runAgentTask(messages, { root, yes: options.yes, config, onText: t => console.log(chalk.white(`\n${t}\n`)) });
+    const finalMessages = await runAgentTask(messages, { root, yes: options.yes, config, onText: async (t) => {
+            console.log();
+            await streamText(t);
+            console.log();
+        } });
     const id = newSessionId();
     const file = await saveSession(root, id, finalMessages);
     console.log(chalk.dim(`\nSession saved: ${file}`));
@@ -127,7 +131,11 @@ program.command('chat', { isDefault: true })
                 root,
                 yes,
                 config,
-                onText: t => console.log(chalk.white(`\n${chalk.bold('assistant')}\n${t}\n`))
+                onText: async (t) => {
+                    console.log(`\n${chalk.bold('assistant')}`);
+                    await streamText(t);
+                    console.log();
+                }
             });
             await saveSession(root, sessionId, messages);
         }
@@ -143,9 +151,7 @@ program.command('chat', { isDefault: true })
 async function handleSlash(command, state) {
     let { root, config, sessionId, messages, yes } = state;
     const [cmd, ...args] = command.split(/\s+/);
-    const chosen = cmd === '/'
-        ? await commandPalette()
-        : cmd;
+    const chosen = await resolveSlashCommand(cmd);
     switch (chosen) {
         case '/exit':
         case '/quit':
@@ -260,25 +266,43 @@ async function handleSlash(command, state) {
     }
     return { root, config, sessionId, messages, yes };
 }
-async function commandPalette() {
+const slashCommands = [
+    { cmd: '/help', desc: 'Show slash commands' },
+    { cmd: '/status', desc: 'Show current session status' },
+    { cmd: '/provider', desc: 'Switch AI provider' },
+    { cmd: '/apikey', desc: 'Enter API key for this session' },
+    { cmd: '/model', desc: 'Change current provider model' },
+    { cmd: '/tools', desc: 'List available agent tools' },
+    { cmd: '/sessions', desc: 'List saved sessions' },
+    { cmd: '/resume', desc: 'Resume a saved session' },
+    { cmd: '/save', desc: 'Save this session' },
+    { cmd: '/clear', desc: 'Clear conversation' },
+    { cmd: '/yes', desc: 'Toggle auto-approval' },
+    { cmd: '/cwd', desc: 'Change project root' },
+    { cmd: '/compact', desc: 'Keep only recent messages' },
+    { cmd: '/exit', desc: 'Quit' },
+    { cmd: '/quit', desc: 'Quit' }
+];
+async function resolveSlashCommand(cmd) {
+    if (cmd === '/')
+        return commandPalette(slashCommands);
+    const matches = slashCommands.filter(c => c.cmd.startsWith(cmd));
+    if (matches.length === 1) {
+        console.log(chalk.dim(`↳ ${cmd} → ${matches[0].cmd}`));
+        return matches[0].cmd;
+    }
+    if (matches.length > 1)
+        return commandPalette(matches);
+    return cmd;
+}
+async function commandPalette(commands = slashCommands) {
     return select({
         message: 'Command palette',
-        choices: [
-            { name: '/help      Show slash commands', value: '/help' },
-            { name: '/status    Show current session status', value: '/status' },
-            { name: '/provider  Switch AI provider', value: '/provider' },
-            { name: '/apikey    Enter API key for this session', value: '/apikey' },
-            { name: '/model     Change current provider model', value: '/model' },
-            { name: '/tools     List available agent tools', value: '/tools' },
-            { name: '/sessions  List saved sessions', value: '/sessions' },
-            { name: '/resume    Resume a saved session', value: '/resume' },
-            { name: '/save      Save this session', value: '/save' },
-            { name: '/clear     Clear conversation', value: '/clear' },
-            { name: '/yes       Toggle auto-approval', value: '/yes' },
-            { name: '/cwd       Change project root', value: '/cwd' },
-            { name: '/compact   Keep only recent messages', value: '/compact' },
-            { name: '/exit      Quit', value: '/exit' }
-        ]
+        pageSize: 12,
+        choices: commands.map(c => ({
+            name: `${c.cmd.padEnd(12)} ${c.desc}`,
+            value: c.cmd
+        }))
     });
 }
 function printHelp() {
@@ -309,7 +333,9 @@ function renderHeader({ root, config, sessionId, yes }) {
 }
 function renderStatusLine(state) {
     const model = currentModel(state.config);
-    console.log(chalk.dim(`\n[${state.config.provider}:${model}] ${state.messages.length} messages · ${state.root} · session ${state.sessionId} · / for commands\n`));
+    const width = Math.min(process.stdout.columns || 88, 100);
+    const text = `[${state.config.provider}:${model}] ${state.messages.length} messages · ${state.root} · session ${state.sessionId} · / for commands`;
+    console.log(chalk.dim(`\n${compactText(text, width)}\n`));
 }
 function pad(text, width) {
     const plain = text.replace(/\x1b\[[0-9;]*m/g, '');

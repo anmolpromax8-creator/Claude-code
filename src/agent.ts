@@ -14,6 +14,7 @@ Rules:
 - Prefer replace_in_file for small edits and write_file for new/full files.
 - Run tests or build commands when useful.
 - Never try to access paths outside the project root.
+- If the user's request is ambiguous or too broad, ask a concise clarifying question and offer likely choices before making changes.
 - Be concise in final answers.`;
 }
 
@@ -21,7 +22,7 @@ export interface AgentOptions {
   root: string;
   yes: boolean;
   config: AppConfig;
-  onText?: (text: string) => void;
+  onText?: (text: string) => void | Promise<void>;
 }
 
 export async function runAgentTask(messages: ChatMessage[], opts: AgentOptions): Promise<ChatMessage[]> {
@@ -40,7 +41,7 @@ export async function runAgentTask(messages: ChatMessage[], opts: AgentOptions):
     }
 
     if (response.text.trim()) {
-      opts.onText?.(response.text);
+      await opts.onText?.(response.text);
       messages.push({ role: 'assistant', content: response.text });
     }
 

@@ -22,9 +22,10 @@ ccode-ai
 
 ## What's new
 
-- Improved terminal UI with splash/header, status frame, and input bar
+- Improved terminal UI with splash/header, status frame, compact non-wrapping lines, and input bar
 - `Ctrl+O` expands/collapses the input bar
 - Animated generating indicator while the model responds
+- Assistant output appears character-by-character in the terminal
 - NVIDIA NIM provider support using the official base URL only:
   - `https://integrate.api.nvidia.com/v1`
 - `/model` auto-fetches the available NVIDIA NIM model list from the official `/models` endpoint and lets you pick one
@@ -33,7 +34,8 @@ ccode-ai
 ## Features
 
 - Interactive TUI chat and one-shot task mode
-- Slash command palette: type `/`
+- Slash command palette: press `/`
+- Slash prefix autocomplete: `/ex` resolves to `/exit`, `/mo` resolves to `/model`
 - Slash commands:
   - `/help` show commands
   - `/status` show provider/model/session/root

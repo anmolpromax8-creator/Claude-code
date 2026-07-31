@@ -18,24 +18,26 @@ const logo = [
 ];
 
 export function renderSplash(version: string, provider: string, model: string, root: string): void {
-  const width = Math.min(process.stdout.columns || 88, 100);
+  const width = termWidth();
+  const textWidth = Math.max(24, width - 24);
   console.log();
   const title = `${chalk.bold.blue(`CCode AI ${version}`)} ${chalk.dim('agentic coding CLI')}`;
-  const meta = `${provider} · ${model}`;
-  const lines = logo.map((l, i) => `${rainbow(l)}  ${i === 1 ? title : i === 2 ? chalk.dim(meta) : i === 3 ? chalk.dim(root) : ''}`);
+  const meta = chalk.dim(compactText(`${provider} · ${model}`, textWidth));
+  const cwd = chalk.dim(compactText(root, textWidth));
+  const lines = logo.map((l, i) => `${rainbow(l)}  ${i === 1 ? title : i === 2 ? meta : i === 3 ? cwd : ''}`);
   for (const l of lines) console.log(l);
   console.log(chalk.gray('─'.repeat(width)));
 }
 
 export function renderFrame(opts: { version: string; root: string; provider: string; model: string; sessionId: string; yes: boolean }): void {
-  const width = Math.min(process.stdout.columns || 88, 100);
+  const width = termWidth();
   const inner = width - 4;
   console.log(chalk.cyan(`╭${'─'.repeat(width - 2)}╮`));
-  console.log(chalk.cyan('│ ') + fit(`CCode AI v${opts.version}  ${chalk.dim('TUI')}`, inner) + chalk.cyan(' │'));
+  console.log(chalk.cyan('│ ') + fitPlain(`CCode AI v${opts.version}  TUI`, inner) + chalk.cyan(' │'));
   console.log(chalk.cyan(`├${'─'.repeat(width - 2)}┤`));
-  console.log(chalk.cyan('│ ') + fit(`root: ${opts.root}`, inner) + chalk.cyan(' │'));
-  console.log(chalk.cyan('│ ') + fit(`provider: ${opts.provider}  model: ${opts.model}`, inner) + chalk.cyan(' │'));
-  console.log(chalk.cyan('│ ') + fit(`auto-approve: ${opts.yes ? 'on' : 'off'}  session: ${opts.sessionId}`, inner) + chalk.cyan(' │'));
+  console.log(chalk.cyan('│ ') + fitPlain(`root: ${opts.root}`, inner) + chalk.cyan(' │'));
+  console.log(chalk.cyan('│ ') + fitPlain(`provider: ${opts.provider}  model: ${opts.model}`, inner) + chalk.cyan(' │'));
+  console.log(chalk.cyan('│ ') + fitPlain(`auto-approve: ${opts.yes ? 'on' : 'off'}  session: ${opts.sessionId}`, inner) + chalk.cyan(' │'));
   console.log(chalk.cyan(`╰${'─'.repeat(width - 2)}╯`));
 }
 
@@ -52,16 +54,18 @@ export async function readInputBar(opts: InputBarOptions): Promise<string> {
   let text = '';
   let cursor = 0;
   let expanded = false;
-  const width = Math.min(process.stdout.columns || 88, 110);
+  const width = termWidth();
   const hint = `esc cancel · ctrl+o expand · enter send · / commands · ${opts.provider} · ${opts.model}`;
 
   console.log(chalk.gray('─'.repeat(width)));
-  console.log(chalk.dim(compact(hint, width)));
+  console.log(chalk.dim(compactText(hint, width)));
 
   const draw = () => {
-    const visible = expanded ? text : compact(text, Math.max(10, width - 6));
-    const left = visible.slice(0, Math.min(cursor, visible.length));
-    const right = visible.slice(Math.min(cursor, visible.length));
+    const max = Math.max(10, width - 4);
+    const display = expanded ? text : compactAroundCursor(text, cursor, max);
+    const displayCursor = Math.min(display.length, expanded ? cursor : Math.min(cursor, max - 1));
+    const left = display.slice(0, displayCursor);
+    const right = display.slice(displayCursor);
     readline.cursorTo(process.stdout, 0);
     readline.clearLine(process.stdout, 0);
     process.stdout.write(`${chalk.blue('>')} ${left}${chalk.inverse(' ')}${right}`);
@@ -70,7 +74,7 @@ export async function readInputBar(opts: InputBarOptions): Promise<string> {
   const printExpandedHint = () => {
     readline.cursorTo(process.stdout, 0);
     readline.clearLine(process.stdout, 0);
-    console.log(chalk.gray(`↕ expanded input · cwd ${opts.root}`));
+    console.log(chalk.gray(compactText(`↕ expanded input · cwd ${opts.root}`, width)));
   };
 
   draw();
@@ -95,7 +99,6 @@ export async function readInputBar(opts: InputBarOptions): Promise<string> {
         return;
       }
       if ((key.name === 'return') || (key.name === 'enter')) return done(text.trim());
-
       if (!text && str === '/') return done('/');
 
       if (key.name === 'backspace') {
@@ -129,19 +132,46 @@ export function createSpinner(label: string) {
     process.stdout.write(`${label}...\n`);
     return { stop: (_text?: string) => undefined };
   }
+  const safeLabel = compactText(label, Math.max(20, termWidth() - 4));
   const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   let i = 0;
-  process.stdout.write(`${chalk.cyan(frames[i])} ${label}`);
+  process.stdout.write(`${chalk.cyan(frames[i])} ${safeLabel}`);
   const timer = setInterval(() => {
     i = (i + 1) % frames.length;
-    process.stdout.write(`\r${chalk.cyan(frames[i])} ${label}`);
+    process.stdout.write(`\r${chalk.cyan(frames[i])} ${safeLabel}`);
   }, 80);
   return {
     stop(text?: string) {
       clearInterval(timer);
-      process.stdout.write(`\r\x1b[2K${text ? text : chalk.green('✓ ' + label)}\n`);
+      process.stdout.write(`\r\x1b[2K${text ? compactText(text, termWidth()) : chalk.green('✓ ' + safeLabel)}\n`);
     }
   };
+}
+
+export async function streamText(text: string, prefix = ''): Promise<void> {
+  if (prefix) process.stdout.write(prefix);
+  if (!process.stdout.isTTY || process.env.CCODE_NO_TYPEWRITER === '1') {
+    process.stdout.write(text + '\n');
+    return;
+  }
+  for (const ch of text) {
+    process.stdout.write(ch);
+    await new Promise(r => setTimeout(r, ch === '\n' ? 8 : 3));
+  }
+  process.stdout.write('\n');
+}
+
+export function compactText(text: string, width: number): string {
+  const plain = stripAnsi(text);
+  if (plain.length <= width) return text;
+  return plain.slice(0, Math.max(1, width - 1)) + '…';
+}
+
+function compactAroundCursor(text: string, cursor: number, width: number): string {
+  if (text.length <= width) return text;
+  if (cursor < width - 1) return text.slice(0, width - 1) + '…';
+  const start = Math.max(0, cursor - width + 2);
+  return '…' + text.slice(start, start + width - 1);
 }
 
 function rainbow(s: string): string {
@@ -149,15 +179,14 @@ function rainbow(s: string): string {
   return [...s].map((ch, i) => ch === ' ' ? ch : colors[i % colors.length](ch)).join('');
 }
 
-function fit(text: string, width: number): string {
-  const plain = stripAnsi(text);
-  if (plain.length >= width) return text;
-  return text + ' '.repeat(width - plain.length);
+function fitPlain(text: string, width: number): string {
+  const compacted = compactText(text, width);
+  const plain = stripAnsi(compacted);
+  return compacted + ' '.repeat(Math.max(0, width - plain.length));
 }
 
-function compact(text: string, width: number): string {
-  if (stripAnsi(text).length <= width) return text;
-  return text.slice(0, Math.max(1, width - 1)) + '…';
+function termWidth(): number {
+  return Math.min(process.stdout.columns || 88, 100);
 }
 
 function stripAnsi(text: string): string {

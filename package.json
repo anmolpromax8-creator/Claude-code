@@ -1,6 +1,6 @@
 {
   "name": "ccode-ai",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Original open-source agentic coding assistant CLI with an improved terminal TUI, slash commands, and NVIDIA NIM support.",
   "type": "module",
   "bin": {

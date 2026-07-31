@@ -1,43 +1,44 @@
 # CCode AI
 
-An **original** agentic coding assistant CLI for local projects. It is inspired by modern code-agent CLIs, but it does **not** copy Anthropic Claude Code source code, proprietary UX, or branding.
+An **original** agentic coding assistant CLI for local projects with a terminal TUI, slash commands, sessions, and safe coding-agent tools.
 
 Repository: <https://github.com/anmolpromax8-creator/Claude-code>
 
+> Not affiliated with Anthropic and not the official Claude Code product.
+
 ## Install
-
-### Works immediately from GitHub
-
-```bash
-npm i -g https://github.com/anmolpromax8-creator/Claude-code/tarball/main
-```
-
-Then run:
-
-```bash
-ccode --help
-# or
-ccode-ai --help
-```
-
-### NPM registry install
-
-The package is prepared for npm under the name `ccode-ai`. After it is published to npm, users can install it with one short command:
 
 ```bash
 npm i -g ccode-ai
 ```
 
-Publishing requires your npm account login/token:
+Then run:
 
 ```bash
-npm login
-npm publish --access public
+ccode
+# or
+ccode-ai
 ```
 
 ## Features
 
-- Interactive chat and one-shot task mode
+- Real interactive terminal UI for coding sessions
+- Slash command palette: type `/`
+- Slash commands:
+  - `/help` show commands
+  - `/status` show provider/model/session/root
+  - `/provider` switch Anthropic/OpenAI-compatible provider
+  - `/model` change model
+  - `/tools` list available agent tools
+  - `/sessions` list saved sessions
+  - `/resume` resume a saved session
+  - `/save` save current session
+  - `/clear` clear conversation context
+  - `/yes` toggle auto-approval
+  - `/cwd` change project root
+  - `/compact` trim conversation context
+  - `/exit` quit
+- One-shot task mode with `ccode run "task"`
 - Anthropic API and OpenAI-compatible API support
 - Tool-calling agent loop
 - Safe project-root file tools:
@@ -76,7 +77,13 @@ export ANTHROPIC_MODEL="claude-3-5-sonnet-latest"
 
 ## Usage
 
-Interactive:
+Start the TUI:
+
+```bash
+ccode
+```
+
+Or explicitly:
 
 ```bash
 ccode chat
@@ -104,6 +111,12 @@ ccode config set openaiModel gpt-4o-mini
 ccode run "Explain this project"
 ```
 
+Check setup:
+
+```bash
+ccode doctor
+```
+
 ## Local development
 
 ```bash
@@ -118,7 +131,3 @@ ccode --help
 ## Safety
 
 The CLI confines file tools to the current project root. It asks before file writes and shell commands unless `--yes` is used.
-
-## Disclaimer
-
-This project is not affiliated with Anthropic and is not the official Claude Code product.
